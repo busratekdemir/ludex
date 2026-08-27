@@ -135,6 +135,22 @@ describe("toAIAnalysisResult — specification opsiyonelliği", () => {
     expect(result.contentAnalysis.improvementSuggestions).toEqual(["Öneri."]);
     expect(result.languageCheck.detectedLanguage).toBe("Türkçe");
   });
+
+  it("does not infer evidence_unverified merely because a null score has no page evidence", () => {
+    const output = evaluationWithFakeSpecViolation();
+    output.criteriaEvaluations = [
+      {
+        criterionId: "c1",
+        score: null,
+        reason: "Puanlama yapılamadı.",
+        criterionMaxScore: 20,
+      },
+    ];
+
+    const result = toAIAnalysisResult("report-1", output, false);
+
+    expect(result.criteriaEvaluations[0].scoreUnavailableReason).toBeUndefined();
+  });
 });
 
 describe("toAIAnalysisResult — eksik şablon bölümleri", () => {

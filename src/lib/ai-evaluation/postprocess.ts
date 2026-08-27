@@ -30,6 +30,8 @@ function stripMarkupTechnologyMentions(items: string[]): string[] {
  * metnine karşı doğrular (bkz. evidence.ts). Doğrulanamayan bir alıntı,
  * persist edilen sonuçtan TAMAMEN çıkarılır (asla saklanmaz) — böylece
  * DB'de duran her pageNumber/exactExcerpt, garantili olarak gerçektir.
+ * Kriter puanı/gerekçesi bu konum doğrulamasından bağımsızdır: doğrulanamayan
+ * alıntı yalnızca tıklanabilir kanıtı kaldırır, geçerli puanı kaldırmaz.
  * Doğrulanan her alıntı, sabit id'li düz bir `evidences` listesine de
  * eklenir; bu id'ler UI'daki mevcut jumpToEvidence/highlight mekanizmasının
  * beklediği `Evidence{id,page,excerpt}` şeklidir.

@@ -76,11 +76,11 @@ import {
   hasCompleteJudgeScore,
 } from "@/lib/ai-preliminary-score";
 import { buildGateFindings, type GateFinding } from "@/lib/gate-findings";
+import { CriterionEvaluationRow } from "@/components/judge/criterion-evaluation-row";
 import type {
   AIAnalysisResult,
   ComplianceCheckItem,
   CopilotChatMessage,
-  CriterionAiEvaluation,
   DisqualificationRecommendation,
   Severity,
 } from "@/types";
@@ -159,91 +159,6 @@ function ComplianceRow({
         <p className="text-sm italic text-muted-foreground">
           Bu bulgu belge içinde işaretlenemez; bölüm eksik.
         </p>
-      )}
-    </div>
-  );
-}
-
-/**
- * Kriter bazlı AI değerlendirmesi satırı — AI'nın puan ÖNERİSİni (nihai puan
- * değil) ve gerekçesini açıkça gösterir. Hakem bu kriter için kendi puanını
- * zaten girdiyse (judgeScore tanımlıysa), aradaki farkı da gösterir — ama
- * hakem henüz dokunmadıysa (input hâlâ varsayılan 0 gösteriyor olsa da
- * `scores` state'inde bu kriter için hiç kayıt yoksa) fark GÖSTERİLMEZ; bu
- * karşılaştırma yalnızca hakemin fiilen girdiği bir puana dayanır.
- */
-function CriterionEvaluationRow({
-  item,
-  analysis,
-  onEvidence,
-  judgeScore,
-}: {
-  item: CriterionAiEvaluation;
-  analysis: AIAnalysisResult;
-  onEvidence: (id: string) => void;
-  judgeScore?: number;
-}) {
-  const diff = judgeScore != null && item.score != null ? judgeScore - item.score : null;
-  const unavailableLabel =
-    item.scoreUnavailableReason === "relevance_blocked"
-      ? "Puanlama yapılmadı"
-      : item.scoreUnavailableReason === "evidence_unverified"
-        ? "Kriter kanıtı doğrulanamadı"
-        : "Puan ölçeği tanımlı değil";
-
-  return (
-    <div className="space-y-1 rounded-lg bg-muted/40 p-3">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-base font-medium">{item.label}</p>
-        {item.score != null ? (
-          <span className="text-base font-semibold text-primary">
-            AI önerisi: {item.score}
-            {item.maxScore != null ? ` / ${item.maxScore}` : ""}
-          </span>
-        ) : (
-          <span className="flex items-center gap-1 text-sm text-amber-600 dark:text-amber-400">
-            <AlertTriangle className="size-4 shrink-0" />
-            {unavailableLabel}
-          </span>
-        )}
-      </div>
-      <div>
-        <p className="text-sm font-medium text-muted-foreground">Gerekçe</p>
-        <p className="text-base text-muted-foreground">{item.reason}</p>
-      </div>
-      {item.evidenceIds.map((eid) => (
-        <Button
-          key={eid}
-          type="button"
-          variant="link"
-          size="sm"
-          className="h-auto p-0 text-base"
-          onClick={() => onEvidence(eid)}
-        >
-          Neden? (Sayfa {analysis.evidences.find((e) => e.id === eid)?.page})
-        </Button>
-      ))}
-      {diff !== null && (
-        <div className="flex flex-wrap items-center gap-3 border-t border-border/60 pt-2 text-sm text-muted-foreground">
-          <span>
-            AI: {item.score} / {item.maxScore}
-          </span>
-          <span>
-            Hakem: {judgeScore} / {item.maxScore}
-          </span>
-          <span
-            className={
-              diff === 0
-                ? "text-muted-foreground"
-                : diff > 0
-                  ? "text-emerald-600 dark:text-emerald-400"
-                  : "text-red-600 dark:text-red-400"
-            }
-          >
-            Fark: {diff > 0 ? "+" : ""}
-            {diff}
-          </span>
-        </div>
       )}
     </div>
   );
@@ -1262,7 +1177,7 @@ export function EvaluationWorkspace({ reportId }: { reportId: string }) {
                                   <CriterionEvaluationRow
                                     key={c.id}
                                     item={c}
-                                    analysis={analysis}
+                                    evidences={analysis.evidences}
                                     onEvidence={jumpToEvidence}
                                     judgeScore={scores[c.id]}
                                   />

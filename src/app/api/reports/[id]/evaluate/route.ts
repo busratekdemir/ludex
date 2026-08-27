@@ -383,18 +383,35 @@ export async function POST(
     // gerçek kriter adı/maxScore'u, hakemin puanlarken kullandığı AYNI
     // effectiveCriteria listesinden burada damgalanır (LLM üretmez).
     const criteriaById = new Map(effectiveCriteria.map((c) => [c.id, c]));
-    verifiedEvaluation.criteriaEvaluations = verifiedEvaluation.criteriaEvaluations.map((c) => ({
-      ...c,
-      criterionLabel: criteriaById.get(c.criterionId)?.label,
-      criterionMaxScore: criteriaById.get(c.criterionId)?.maxScore,
-      ...(c.score != null && c.score > 0 && !(c.pageNumber && c.exactExcerpt)
-        ? {
-            score: null,
-            scoreUnavailableReason: "evidence_unverified",
-            reason: "Pozitif kriter puanı için doğrulanmış rapor kanıtı bulunamadı.",
-          }
-        : {}),
-    }));
+    verifiedEvaluation.criteriaEvaluations = verifiedEvaluation.criteriaEvaluations.map((c) => {
+      const criterion = criteriaById.get(c.criterionId);
+      if (!criterion) {
+        throw new InvalidCriteriaEvaluationsError(`Unknown criterionId: ${c.criterionId}`);
+      }
+      const maxScore: number | undefined = criterion.maxScore;
+
+      // Kriter puanı ile opsiyonel sayfa kanıtı ayrı sonuçlardır. Alıntı
+      // doğrulanamadığında attachVerifiedEvidence yalnızca konum alanlarını
+      // kaldırır; backend'e ait ölçek içinde kalan geçerli puan/gerekçe korunur.
+      if (!relevanceBlocked && maxScore != null && c.score == null) {
+        throw new InvalidCriteriaEvaluationsError(
+          `Missing score for scorable criterionId: ${c.criterionId}`
+        );
+      }
+
+      return {
+        ...c,
+        criterionLabel: criterion.label,
+        criterionMaxScore: maxScore,
+        score: maxScore == null ? null : c.score,
+        scoreUnavailableReason:
+          maxScore == null
+            ? "scale_missing"
+            : c.score == null
+              ? c.scoreUnavailableReason
+              : undefined,
+      };
+    });
 
     // Benzerlik LLM tarafından üretilmez — deterministik olarak burada
     // hesaplanır ve aynı AI analiz kaydına (AIAnalysis) eklenir. Yalnızca

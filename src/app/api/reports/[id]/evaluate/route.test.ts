@@ -502,6 +502,150 @@ describe("POST /api/reports/[id]/evaluate — relevance preflight", () => {
 });
 
 describe("POST /api/reports/[id]/evaluate — effective criteria pipeline", () => {
+  it("persists a valid positive score and reason when optional page evidence is absent", async () => {
+    resolveReadiness.mockResolvedValue({
+      status: "fresh",
+      category: {
+        id: "cat-1",
+        name: "Test Kategorisi",
+        specificationText: undefined,
+        templateSections: [],
+      },
+      effectiveCriteria: [{ id: "c1", label: "Problem Tanımı", maxScore: 20 }],
+    });
+    evaluateReport.mockResolvedValue({
+      ...fakeSpecViolationOutput(),
+      criteriaEvaluations: [
+        {
+          criterionId: "c1",
+          score: 18,
+          reason: "Problem açık ve ölçülebilir biçimde tanımlanmış.",
+        },
+      ],
+    });
+
+    const res = await POST(makeRequest(), { params: Promise.resolve({ id: "report-1" }) });
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.evaluation.criteriaEvaluations[0]).toEqual({
+      criterionId: "c1",
+      score: 18,
+      reason: "Problem açık ve ölçülebilir biçimde tanımlanmış.",
+      criterionLabel: "Problem Tanımı",
+      criterionMaxScore: 20,
+    });
+  });
+
+  it("removes an invalid criterion excerpt while preserving the valid score", async () => {
+    resolveReadiness.mockResolvedValue({
+      status: "fresh",
+      category: {
+        id: "cat-1",
+        name: "Test Kategorisi",
+        specificationText: undefined,
+        templateSections: [],
+      },
+      effectiveCriteria: [{ id: "c1", label: "Problem Tanımı", maxScore: 20 }],
+    });
+    evaluateReport.mockResolvedValue({
+      ...fakeSpecViolationOutput(),
+      criteriaEvaluations: [
+        {
+          criterionId: "c1",
+          score: 18,
+          reason: "Problem açık ve ölçülebilir biçimde tanımlanmış.",
+          pageNumber: 1,
+          exactExcerpt: "Raporda bulunmayan uydurma kriter alıntısı.",
+        },
+      ],
+    });
+
+    const res = await POST(makeRequest(), { params: Promise.resolve({ id: "report-1" }) });
+    const body = await res.json();
+    const criterion = body.evaluation.criteriaEvaluations[0];
+
+    expect(res.status).toBe(200);
+    expect(criterion).toMatchObject({ score: 18, criterionMaxScore: 20 });
+    expect(criterion).not.toHaveProperty("scoreUnavailableReason");
+    expect(criterion).not.toHaveProperty("pageNumber");
+    expect(criterion).not.toHaveProperty("exactExcerpt");
+    expect(body.evaluation.evidences).not.toContainEqual(
+      expect.objectContaining({ id: "criterion-c1" })
+    );
+  });
+
+  it("preserves both a valid score and verified criterion evidence", async () => {
+    resolveReadiness.mockResolvedValue({
+      status: "fresh",
+      category: {
+        id: "cat-1",
+        name: "Test Kategorisi",
+        specificationText: undefined,
+        templateSections: [],
+      },
+      effectiveCriteria: [{ id: "c1", label: "Problem Tanımı", maxScore: 20 }],
+    });
+    evaluateReport.mockResolvedValue({
+      ...fakeSpecViolationOutput(),
+      criteriaEvaluations: [
+        {
+          criterionId: "c1",
+          score: 18,
+          reason: "Problem açık ve ölçülebilir biçimde tanımlanmış.",
+          pageNumber: 1,
+          exactExcerpt: "Rapor içeriği.",
+        },
+      ],
+    });
+
+    const res = await POST(makeRequest(), { params: Promise.resolve({ id: "report-1" }) });
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.evaluation.criteriaEvaluations[0]).toMatchObject({
+      score: 18,
+      pageNumber: 1,
+      exactExcerpt: "Rapor içeriği.",
+    });
+    expect(body.evaluation.evidences).toContainEqual(
+      expect.objectContaining({ id: "criterion-c1", page: 1, excerpt: "Rapor içeriği." })
+    );
+  });
+
+  it("uses score=null/scale_missing only when the backend criterion has no scoring scale", async () => {
+    resolveReadiness.mockResolvedValue({
+      status: "fresh",
+      category: {
+        id: "cat-1",
+        name: "Test Kategorisi",
+        specificationText: undefined,
+        templateSections: [],
+      },
+      effectiveCriteria: [{ id: "c1", label: "Ölçeksiz Kriter", maxScore: undefined }],
+    });
+    evaluateReport.mockResolvedValue({
+      ...fakeSpecViolationOutput(),
+      criteriaEvaluations: [
+        {
+          criterionId: "c1",
+          score: null,
+          reason: "Puanlama ölçeği tanımlı değil.",
+        },
+      ],
+    });
+
+    const res = await POST(makeRequest(), { params: Promise.resolve({ id: "report-1" }) });
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.evaluation.criteriaEvaluations[0]).toMatchObject({
+      criterionId: "c1",
+      score: null,
+      scoreUnavailableReason: "scale_missing",
+    });
+  });
+
   it("sends category-specific judge criteria to AI and preserves their ids/max scores", async () => {
     const effectiveCriteria = [
       { id: "category-innovation", label: "Kategori Yenilik", description: "Özgünlük", maxScore: 12 },
@@ -610,6 +754,50 @@ describe("POST /api/reports/[id]/evaluate — kriter semantic validation", () =>
     evaluateReport.mockResolvedValue({
       ...fakeSpecViolationOutput(),
       criteriaEvaluations: [{ criterionId: "unknown", score: 8, reason: "iyi" }],
+    });
+
+    const res = await POST(makeRequest(), { params: Promise.resolve({ id: "report-1" }) });
+
+    expect(res.status).toBe(400);
+    expect(setAiEvaluation).not.toHaveBeenCalled();
+  });
+
+  it("rejects a score above the backend-owned maxScore without persisting it", async () => {
+    resolveReadiness.mockResolvedValue({
+      status: "fresh",
+      category: {
+        id: "cat-1",
+        name: "Test Kategorisi",
+        specificationText: undefined,
+        templateSections: [],
+      },
+      effectiveCriteria: [{ id: "c1", label: "Kriter 1", maxScore: 10 }],
+    });
+    evaluateReport.mockResolvedValue({
+      ...fakeSpecViolationOutput(),
+      criteriaEvaluations: [{ criterionId: "c1", score: 11, reason: "Geçersiz puan." }],
+    });
+
+    const res = await POST(makeRequest(), { params: Promise.resolve({ id: "report-1" }) });
+
+    expect(res.status).toBe(400);
+    expect(setAiEvaluation).not.toHaveBeenCalled();
+  });
+
+  it("rejects a missing score for a scorable, relevance-allowed criterion", async () => {
+    resolveReadiness.mockResolvedValue({
+      status: "fresh",
+      category: {
+        id: "cat-1",
+        name: "Test Kategorisi",
+        specificationText: undefined,
+        templateSections: [],
+      },
+      effectiveCriteria: [{ id: "c1", label: "Kriter 1", maxScore: 10 }],
+    });
+    evaluateReport.mockResolvedValue({
+      ...fakeSpecViolationOutput(),
+      criteriaEvaluations: [{ criterionId: "c1", score: null, reason: "Puan yok." }],
     });
 
     const res = await POST(makeRequest(), { params: Promise.resolve({ id: "report-1" }) });

@@ -8,7 +8,7 @@ export interface ContextHashInput {
   criteria: ScoreCriterion[];
 }
 
-export const EVALUATION_POLICY_VERSION = 5;
+export const EVALUATION_POLICY_VERSION = 6;
 
 /**
  * Bir kategorinin o anki AI değerlendirme bağlamının (şartname metni +

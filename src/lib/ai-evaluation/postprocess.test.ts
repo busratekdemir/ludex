@@ -55,6 +55,66 @@ function baseEvaluation(): EvaluationOutput {
 }
 
 describe("attachVerifiedEvidence", () => {
+  it("preserves a positive criterion score and reason when no page evidence was supplied", () => {
+    const result = attachVerifiedEvidence(baseEvaluation(), PAGES);
+
+    expect(result.criteriaEvaluations[0]).toEqual({
+      criterionId: "crit-1",
+      score: 8,
+      reason: "iyi",
+      pageNumber: undefined,
+      exactExcerpt: undefined,
+    });
+  });
+
+  it("removes an invalid criterion excerpt without discarding its score", () => {
+    const evaluation = baseEvaluation();
+    evaluation.criteriaEvaluations[0] = {
+      criterionId: "crit-1",
+      score: 8,
+      reason: "Somut gerekçe korundu.",
+      pageNumber: 2,
+      exactExcerpt: "raporda bulunmayan kriter alıntısı",
+    };
+
+    const result = attachVerifiedEvidence(evaluation, PAGES);
+
+    expect(result.criteriaEvaluations[0]).toEqual({
+      criterionId: "crit-1",
+      score: 8,
+      reason: "Somut gerekçe korundu.",
+      pageNumber: undefined,
+      exactExcerpt: undefined,
+    });
+    expect(result.evidences.find((e) => e.id === "criterion-crit-1")).toBeUndefined();
+  });
+
+  it("preserves both a criterion score and its verified evidence", () => {
+    const evaluation = baseEvaluation();
+    evaluation.criteriaEvaluations[0] = {
+      criterionId: "crit-1",
+      score: 8,
+      reason: "Somut gerekçe korundu.",
+      pageNumber: 2,
+      exactExcerpt: "en az iki bağımsız sensör",
+    };
+
+    const result = attachVerifiedEvidence(evaluation, PAGES);
+
+    expect(result.criteriaEvaluations[0]).toMatchObject({
+      score: 8,
+      pageNumber: 2,
+      exactExcerpt: "en az iki bağımsız sensör",
+    });
+    expect(result.evidences).toContainEqual(
+      expect.objectContaining({
+        id: "criterion-crit-1",
+        page: 2,
+        excerpt: "en az iki bağımsız sensör",
+      })
+    );
+  });
+
   it("keeps a verified finding's pageNumber/exactExcerpt and adds it to evidences", () => {
     const result = attachVerifiedEvidence(baseEvaluation(), PAGES);
     const verifiedFinding = result.specificationAnalysis.findings[0];
