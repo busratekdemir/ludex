@@ -107,23 +107,28 @@ export function toAIAnalysisResult(
       };
     });
 
-  const templateCompliance: ComplianceCheckItem[] = headingContentAnalysis.map((h) => {
-    const id = `heading-${h.sectionId}`;
-    const hasEvidence = Boolean(h.pageNumber && h.exactExcerpt);
-    const missing = output.templateAnalysis.missingSections.includes(h.sectionId);
-    return {
-      id,
-      label: h.sectionId,
-      passed: h.headingPresent && h.contentMatchesExpectation,
-      detail: h.notes,
-      evidenceIds: hasEvidence ? [id] : [],
-      // Bölüm tamamen eksikse (missingSections) işaretlenecek bir konum
-      // yoktur — sahte bir highlight üretmek yerine bunu açıkça belirtiriz.
-      unverifiable: !hasEvidence && (missing || !h.headingPresent),
-    };
-  });
-  const existingTemplateSectionIds = new Set(headingContentAnalysis.map((section) => section.sectionId));
-  for (const sectionId of output.templateAnalysis.missingSections) {
+  const templateWasEvaluated = output.relevanceAnalysis?.status !== "unrelated";
+  const templateCompliance: ComplianceCheckItem[] = templateWasEvaluated
+    ? headingContentAnalysis.map((h) => {
+        const id = `heading-${h.sectionId}`;
+        const hasEvidence = Boolean(h.pageNumber && h.exactExcerpt);
+        const missing = output.templateAnalysis.missingSections.includes(h.sectionId);
+        return {
+          id,
+          label: h.sectionId,
+          passed: h.headingPresent && h.contentMatchesExpectation,
+          detail: h.notes,
+          evidenceIds: hasEvidence ? [id] : [],
+          // Bölüm tamamen eksikse (missingSections) işaretlenecek bir konum
+          // yoktur — sahte bir highlight üretmek yerine bunu açıkça belirtiriz.
+          unverifiable: !hasEvidence && (missing || !h.headingPresent),
+        };
+      })
+    : [];
+  const existingTemplateSectionIds = new Set(
+    headingContentAnalysis.map((section) => section.sectionId)
+  );
+  for (const sectionId of templateWasEvaluated ? output.templateAnalysis.missingSections : []) {
     if (existingTemplateSectionIds.has(sectionId)) continue;
     templateCompliance.push({
       id: `heading-${sectionId}`,

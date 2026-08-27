@@ -26,7 +26,7 @@ GÖREVLERİN:
    - Bir bölüm ancak gerçek proje/yarışmacı içeriği (somut yöntem, bulgu, tasarım, ölçüm, sonuç veya benzeri özgün ayrıntı) gerçekten mevcutsa contentMatchesExpectation=true olabilir. Başlık veya şablon talimatının bulunması tek başına yeterli değildir.
 5. Projenin/raporun verilen kategoriye uygunluğunu değerlendir (categoryFit). Bu değerlendirmeyi yalnızca kategori adına bakarak yüzeysel bir tahmine dayandırma; rapor içeriğini, kategori açıklamasını (verilmişse) ve şartname bağlamını (verilmişse) birlikte dikkate alarak karar ver. Kategori açıklaması verilmemişse yalnızca kategori adı ve rapor içeriğine göre değerlendir.
    - Kriter puanlamasından ÖNCE relevanceAnalysis üret: raporun amacı/çözümü ve teknik yaklaşımını aktif yarışma problemiyle eşleştir. Başlıklar, şablon metni, genel teknik sözcükler, uzunluk, yazım kalitesi veya kriter adı eşleşmesi kanıt değildir.
-  - relevanceAnalysis için gerçek specificationRuleIds ile raporda gerçek reportPageNumber/reportExcerpt gerekir. Kanıt yoksa uncertain yaz. unrelated/uncertain durumunda kriterlere olumlu puan verme; score=null yaz.
+   - relevanceAnalysis için gerçek specificationRuleIds ile raporda gerçek reportPageNumber/reportExcerpt gerekir. Kanıt yoksa uncertain yaz. uncertain yalnızca kanıtın yetersiz olduğunu ve hakem incelemesi gerektiğini belirtir; şartname/şablon ihlali değildir ve normal kriter değerlendirmesini durdurmaz. Yalnızca yüksek güvenli unrelated durumunda kriter puanlarını score=null yaz.
    - Çıktıyı kısa tut: explanation/reason/notes en fazla iki kısa cümle, exactExcerpt en fazla 240 karakter olsun. Şartname veya rapor metnini tekrar yazma; yalnızca ruleId ve kısa gerçek alıntı ver.
 6. evaluationCriteria listesindeki HER kriteri ayrı ayrı değerlendir. Hiçbir kriteri atlama.
 7. Değerlendirdiğin her kriter için: criterionId, score, reason ve mümkünse rapordan somut bir alıntı/gerekçe niteliğinde evidence üret.
@@ -206,7 +206,7 @@ Yalnızca şu JSON nesnesini döndür; JSON dışında metin yazma:
   "mappedConcepts": string[]
 }
 
-status="relevant" veya "unrelated" için hem gerçek bir ruleId hem de raporda harfi harfine geçen kısa bir reportExcerpt zorunludur. Kanıt yoksa status="uncertain" yaz. explanation en fazla iki kısa cümle, reportExcerpt en fazla 240 karakter, mappedConcepts en fazla 6 kısa öğe olsun.`;
+status="relevant" veya "unrelated" için hem gerçek bir ruleId hem de raporda harfi harfine geçen kısa bir reportExcerpt zorunludur. status="unrelated" yalnızca bu kanıtlar raporun farklı bir problemi çözdüğünü açıkça gösteriyor ve confidence en az 0.8 ise kullanılabilir. Teknik zayıflık, düşük performans veya eksik ayrıntı kategori uyumsuzluğu ya da şartname ihlali değildir. Kanıt yoksa veya karar için yetersizse status="uncertain" yaz; uncertain başarısızlık değil, hakem incelemesi gerektiren kanıt yetersizliğidir. explanation en fazla iki kısa cümle, reportExcerpt en fazla 240 karakter, mappedConcepts en fazla 6 kısa öğe olsun.`;
 
 /**
  * Keep this call deliberately bounded: relevance is decided from the project
