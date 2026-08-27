@@ -3,6 +3,7 @@ import {
   buildAuthoritativeSpecificationRules,
   normalizeSpecificationAnalysis,
   NO_SPECIFICATION_NOTES,
+  validateRelevanceAnalysis,
   validateSpecificationFindings,
   reconcileLanguageCompliance,
 } from "./specification-compliance";
@@ -201,6 +202,7 @@ Bu koşulu sağlamayan başvurular diskalifiye edilir.`;
       pages
     );
     expect(result.analysis.findings).toEqual([]);
+    expect(result.analysis.compliant).toBe(true);
     expect(result.technicalWeaknesses).toEqual([weakness]);
   });
 
@@ -250,5 +252,46 @@ Bu koşulu sağlamayan başvurular diskalifiye edilir.`;
       pages
     );
     expect(result.analysis.findings).toHaveLength(1);
+  });
+});
+
+describe("validateRelevanceAnalysis", () => {
+  const rules = buildAuthoritativeSpecificationRules(
+    "İHA, otonom uçuş görevi için tasarlanmalıdır."
+  );
+  const pages = [{ pageNumber: 1, text: "Projemiz sera sulama sistemini otomatikleştirir." }];
+  const unrelated = (overrides = {}) => ({
+    status: "unrelated" as const,
+    specificationRuleIds: [rules[0].id],
+    reportPageNumber: 1,
+    reportExcerpt: "sera sulama sistemini otomatikleştirir",
+    explanation: "Rapor farklı bir problemi çözüyor.",
+    confidence: 0.95,
+    mappedConcepts: ["sulama"],
+    ...overrides,
+  });
+
+  it("keeps unrelated only with verified rule/report evidence and high confidence", () => {
+    expect(validateRelevanceAnalysis(unrelated(), rules, pages).status).toBe("unrelated");
+  });
+
+  it("downgrades low-confidence unrelated evidence to uncertain", () => {
+    expect(
+      validateRelevanceAnalysis(unrelated({ confidence: 0.79 }), rules, pages).status
+    ).toBe("uncertain");
+  });
+
+  it("downgrades an unverifiable exact excerpt to uncertain and removes it", () => {
+    const result = validateRelevanceAnalysis(
+      unrelated({ reportExcerpt: "Raporda olmayan alıntı" }),
+      rules,
+      pages
+    );
+    expect(result).toMatchObject({
+      status: "uncertain",
+      confidence: 0,
+      reportPageNumber: undefined,
+      reportExcerpt: undefined,
+    });
   });
 });

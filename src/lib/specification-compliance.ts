@@ -20,6 +20,9 @@ export interface NormalizableSpecificationAnalysis {
 export const NO_SPECIFICATION_NOTES =
   "Şartname yüklenmediği için şartname uygunluğu değerlendirilmedi.";
 
+/** An unrelated hard block requires both verified evidence and high model confidence. */
+export const UNRELATED_RELEVANCE_MIN_CONFIDENCE = 0.8;
+
 const LANGUAGE_ALIASES: Record<string, string> = {
   tr: "tr", turkish: "tr", turkce: "tr",
   en: "en", english: "en",
@@ -133,6 +136,20 @@ export function validateRelevanceAnalysis(
       confidence: 0,
     };
   }
+  if (
+    relevance.status === "unrelated" &&
+    relevance.confidence < UNRELATED_RELEVANCE_MIN_CONFIDENCE
+  ) {
+    return {
+      ...relevance,
+      status: "uncertain",
+      specificationRuleIds: validRuleIds,
+      reportPageNumber: reportEvidence.page,
+      reportExcerpt: reportEvidence.excerpt,
+      explanation:
+        "Kategori/problem uyumsuzluğu için kanıt bulundu ancak güven düzeyi yetersiz; hakem incelemesi gerekiyor.",
+    };
+  }
   return {
     ...relevance,
     specificationRuleIds: validRuleIds,
@@ -183,7 +200,15 @@ export function validateSpecificationFindings(
   }
 
   return {
-    analysis: { ...specificationAnalysis, compliant: findings.length === 0, findings },
+    analysis: {
+      ...specificationAnalysis,
+      compliant: findings.length === 0,
+      findings,
+      notes:
+        findings.length === 0
+          ? "Doğrulanmış şartname ihlali bulunamadı."
+          : specificationAnalysis.notes,
+    },
     technicalWeaknesses: [...new Set(technicalWeaknesses)],
     rulesById,
   };

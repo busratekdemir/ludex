@@ -138,6 +138,28 @@ describe("toAIAnalysisResult — specification opsiyonelliği", () => {
 });
 
 describe("toAIAnalysisResult — eksik şablon bölümleri", () => {
+  it("does not present unevaluated template headings as failures for an unrelated report", () => {
+    const output = evaluationWithFakeSpecViolation();
+    output.relevanceAnalysis = {
+      status: "unrelated",
+      specificationRuleIds: ["spec-rule-1"],
+      reportPageNumber: 1,
+      reportExcerpt: "Rapor içeriği.",
+      explanation: "Rapor farklı bir problemi çözüyor.",
+      confidence: 0.95,
+      mappedConcepts: [],
+    };
+    output.templateAnalysis = {
+      compliant: true,
+      missingSections: [],
+      notes: "Şablon uygunluğu değerlendirilmedi.",
+    };
+
+    const result = toAIAnalysisResult("report-1", output, true);
+
+    expect(result.templateCompliance).toEqual([]);
+  });
+
   it("adds a failed template item for a missing section", () => {
     const output = evaluationWithFakeSpecViolation();
     output.templateAnalysis = {

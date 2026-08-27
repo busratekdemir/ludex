@@ -114,18 +114,16 @@ async function applyTemplateCopyGuard(
 }
 
 /**
- * A non-relevant report must never spend a full model call generating scores
- * that will be discarded. This deliberately carries only the preflight result
- * forward; detailed template/language/criterion claims remain not evaluated.
+ * A verified unrelated report must never spend a full model call generating
+ * scores that will be discarded. Unevaluated compliance dimensions stay
+ * neutral; category relevance is not a specification or template violation.
  */
 function createRelevanceBlockedEvaluation(
   input: EvaluationInput,
   relevanceAnalysis: RelevanceAnalysis
 ): EvaluationOutput {
   const reason =
-    relevanceAnalysis.status === "unrelated"
-      ? "Kategori/problem uyumsuzluğu nedeniyle normal AI puanlaması durduruldu."
-      : "Kategori/problem eşleşmesi belirsiz olduğu için normal AI puanlaması durduruldu.";
+    "Doğrulanmış kategori/problem uyumsuzluğu nedeniyle normal AI puanlaması durduruldu.";
 
   return {
     languageAnalysis: {
@@ -134,11 +132,15 @@ function createRelevanceBlockedEvaluation(
       summary: "Kategori/problem uygunluğu ön kontrolünde normal dil değerlendirmesi yapılmadı.",
       issues: [],
     },
-    specificationAnalysis: { compliant: false, findings: [], notes: reason },
+    specificationAnalysis: {
+      compliant: true,
+      findings: [],
+      notes: "Kategori/problem uyumsuzluğu nedeniyle şartname uygunluğu değerlendirilmedi.",
+    },
     templateAnalysis: {
-      compliant: false,
-      missingSections: input.template.sections.map((section) => section.id),
-      notes: "Kategori/problem uygunluğu doğrulanmadan şablon içeriği değerlendirilmedi.",
+      compliant: true,
+      missingSections: [],
+      notes: "Kategori/problem uyumsuzluğu nedeniyle şablon uygunluğu değerlendirilmedi.",
     },
     headingContentAnalysis: input.template.sections.map((section) => ({
       sectionId: section.id,
@@ -261,8 +263,8 @@ export async function POST(
       evaluationCriteria: toAiCriteria(effectiveCriteria),
     };
 
-    // Relevance is a bounded preflight. A full criterion evaluation is made
-    // only after authoritative rule and report evidence confirm relevance.
+    // Relevance is a bounded preflight. Only a verified, high-confidence
+    // unrelated result blocks scoring; uncertainty proceeds to full analysis.
     let preflight: RelevanceAnalysis | undefined;
     if (hasSpecification) {
       const preflightStartedAt = performance.now();
@@ -278,7 +280,7 @@ export async function POST(
     }
 
     let evaluation: EvaluationOutput;
-    if (preflight && preflight.status !== "relevant") {
+    if (preflight?.status === "unrelated") {
       evaluation = createRelevanceBlockedEvaluation(evaluationInput, preflight);
     } else {
       const evaluationStartedAt = performance.now();
@@ -327,15 +329,13 @@ export async function POST(
         authoritativeSpecificationRules,
         report.extractedPages
       );
-      if (evaluation.relevanceAnalysis.status !== "relevant") {
+      if (evaluation.relevanceAnalysis.status === "unrelated") {
         evaluation.criteriaEvaluations = evaluation.criteriaEvaluations.map((criterion) => ({
           ...criterion,
           score: null,
           scoreUnavailableReason: "relevance_blocked",
           reason:
-            evaluation.relevanceAnalysis.status === "unrelated"
-              ? "Kategori/problem uyumsuzluğu nedeniyle normal kriter puanlaması durduruldu."
-              : "Kategori/problem eşleşmesi belirsiz olduğu için hakem incelemesi gereklidir.",
+            "Doğrulanmış kategori/problem uyumsuzluğu nedeniyle normal kriter puanlaması durduruldu.",
           evidence: undefined,
           pageNumber: undefined,
           exactExcerpt: undefined,
@@ -343,11 +343,14 @@ export async function POST(
       }
     }
 
-    const guardedEvaluation = await applyTemplateCopyGuard(
-      evaluation,
-      category.reportTemplate?.fileUrl,
-      report.extractedText ?? ""
-    );
+    const relevanceBlocked = evaluation.relevanceAnalysis?.status === "unrelated";
+    const guardedEvaluation = relevanceBlocked
+      ? evaluation
+      : await applyTemplateCopyGuard(
+          evaluation,
+          category.reportTemplate?.fileUrl,
+          report.extractedText ?? ""
+        );
 
     const normalizedHeadings = normalizeHeadingContentAnalysis(
       category.templateSections,
@@ -359,12 +362,14 @@ export async function POST(
     // güvenmez — her iddiayı raporun gerçek sayfa metnine karşı doğrular ve
     // doğrulanamayanları sonuçtan çıkarır (bkz. postprocess.ts).
     const verifiedEvaluation = attachVerifiedEvidence(guardedEvaluation, report.extractedPages);
-    verifiedEvaluation.templateAnalysis = deriveTemplateCompliance(
-      category.templateSections,
-      verifiedEvaluation.headingContentAnalysis,
-      verifiedEvaluation.templateAnalysis.notes,
-      normalizedHeadings.issues
-    );
+    if (!relevanceBlocked) {
+      verifiedEvaluation.templateAnalysis = deriveTemplateCompliance(
+        category.templateSections,
+        verifiedEvaluation.headingContentAnalysis,
+        verifiedEvaluation.templateAnalysis.notes,
+        normalizedHeadings.issues
+      );
+    }
     const relevanceStatus = verifiedEvaluation.relevanceAnalysis?.status ?? "relevant";
     verifiedEvaluation.overallComplianceStatus =
       relevanceStatus !== "relevant"
@@ -374,14 +379,6 @@ export async function POST(
           : verifiedEvaluation.languageAnalysis.issues.length > 0
             ? "needs_review"
             : "compliant";
-    if (verifiedEvaluation.overallComplianceStatus === "needs_review") {
-      verifiedEvaluation.specificationAnalysis = {
-        ...verifiedEvaluation.specificationAnalysis,
-        compliant: false,
-        notes: "Şartname uygunluğu doğrulanamadı. Kategori/problem eşleşmesi için hakem incelemesi gerekiyor.",
-      };
-    }
-
     // criterionId yalnızca bir id'dir (genelde UUID) — UI'nın gösterebileceği
     // gerçek kriter adı/maxScore'u, hakemin puanlarken kullandığı AYNI
     // effectiveCriteria listesinden burada damgalanır (LLM üretmez).

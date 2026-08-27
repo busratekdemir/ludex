@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { evaluationInputSchema } from "./schema";
-import { buildEvaluationPrompt } from "./prompts";
+import { RELEVANCE_PREFLIGHT_SYSTEM_PROMPT, SYSTEM_PROMPT, buildEvaluationPrompt } from "./prompts";
 
 const BASE_INPUT = {
   reportContent: "[PAGE 1]\nRapor içeriği.",
@@ -55,5 +55,12 @@ describe("buildEvaluationPrompt — kategori bağlamı", () => {
     const prompt = buildEvaluationPrompt(input);
 
     expect(prompt).toContain("hiçbir ihlal bulgusu üretme");
+  });
+
+  it("defines uncertain as reviewable evidence insufficiency rather than compliance failure", () => {
+    expect(SYSTEM_PROMPT).toContain("uncertain yalnızca kanıtın yetersiz olduğunu");
+    expect(SYSTEM_PROMPT).toContain("normal kriter değerlendirmesini durdurmaz");
+    expect(RELEVANCE_PREFLIGHT_SYSTEM_PROMPT).toContain("uncertain başarısızlık değil");
+    expect(RELEVANCE_PREFLIGHT_SYSTEM_PROMPT).toContain("confidence en az 0.8");
   });
 });

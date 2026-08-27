@@ -358,36 +358,103 @@ describe("POST /api/reports/[id]/evaluate — relevance preflight", () => {
     };
   }
 
-  it.each(["unrelated", "uncertain"] as const)(
-    "%s preflight sonucu ayrıntılı puanlama AI çağrısını kısa devre eder",
-    async (status) => {
-      resolveReadiness.mockResolvedValue({
-        status: "fresh",
-        category: categoryWithSpecification(),
-        effectiveCriteria: [{ id: "c1", label: "Kriter 1", maxScore: 10 }],
-      });
-      evaluateRelevancePreflight.mockResolvedValue({
-        status,
-        specificationRuleIds: ["spec-rule-1"],
-        reportPageNumber: 1,
-        reportExcerpt: "Rapor içeriği.",
-        explanation: "Raporun temel çözümü yarışma problemiyle eşleşmiyor.",
-        confidence: 0.95,
-        mappedConcepts: [],
-      });
+  it("uncertain preflight runs full evaluation and does not manufacture compliance failures", async () => {
+    resolveReadiness.mockResolvedValue({
+      status: "fresh",
+      category: categoryWithSpecification(),
+      effectiveCriteria: [{ id: "c1", label: "Kriter 1", maxScore: 10 }],
+    });
+    evaluateRelevancePreflight.mockResolvedValue({
+      status: "uncertain",
+      specificationRuleIds: [],
+      explanation: "Kategori/problem eşleşmesi için yeterli kanıt yok.",
+      confidence: 0.4,
+      mappedConcepts: [],
+    });
+    evaluateReport.mockResolvedValue({
+      ...fakeSpecViolationOutput(),
+      specificationAnalysis: {
+        compliant: false,
+        findings: [],
+        notes: "Doğrulanmış bir şartname ihlali bulunamadı.",
+      },
+      criteriaEvaluations: [
+        {
+          criterionId: "c1",
+          score: 8,
+          reason: "Kriter değerlendirildi.",
+          pageNumber: 1,
+          exactExcerpt: "Rapor içeriği.",
+        },
+      ],
+    });
 
-      const res = await POST(makeRequest(), { params: Promise.resolve({ id: "report-1" }) });
-      const body = await res.json();
+    const res = await POST(makeRequest(), { params: Promise.resolve({ id: "report-1" }) });
+    const body = await res.json();
 
-      expect(res.status).toBe(200);
-      expect(evaluateRelevancePreflight).toHaveBeenCalledTimes(1);
-      expect(evaluateReport).not.toHaveBeenCalled();
-      expect(body.evaluation.criteriaEvaluations[0]).toMatchObject({
-        score: null,
-        scoreUnavailableReason: "relevance_blocked",
-      });
-    }
-  );
+    expect(res.status).toBe(200);
+    expect(evaluateReport).toHaveBeenCalledTimes(1);
+    expect(body.evaluation.relevanceAnalysis.status).toBe("uncertain");
+    expect(body.evaluation.specificationAnalysis.compliant).toBe(true);
+    expect(body.evaluation.templateAnalysis.compliant).toBe(true);
+    expect(body.evaluation.criteriaEvaluations[0]).toMatchObject({ score: 8 });
+  });
+
+  it("verified high-confidence unrelated preflight blocks scoring without creating spec/template violations", async () => {
+    resolveReadiness.mockResolvedValue({
+      status: "fresh",
+      category: categoryWithSpecification(),
+      effectiveCriteria: [{ id: "c1", label: "Kriter 1", maxScore: 10 }],
+    });
+    evaluateRelevancePreflight.mockResolvedValue({
+      status: "unrelated",
+      specificationRuleIds: ["spec-rule-1"],
+      reportPageNumber: 1,
+      reportExcerpt: "Rapor içeriği.",
+      explanation: "Rapor farklı bir problemi çözüyor.",
+      confidence: 0.95,
+      mappedConcepts: [],
+    });
+
+    const res = await POST(makeRequest(), { params: Promise.resolve({ id: "report-1" }) });
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(evaluateReport).not.toHaveBeenCalled();
+    expect(body.evaluation.relevanceAnalysis.status).toBe("unrelated");
+    expect(body.evaluation.specificationAnalysis).toMatchObject({ compliant: true, findings: [] });
+    expect(body.evaluation.templateAnalysis).toMatchObject({ compliant: true, missingSections: [] });
+    expect(body.evaluation.criteriaEvaluations[0]).toMatchObject({
+      score: null,
+      scoreUnavailableReason: "relevance_blocked",
+    });
+  });
+
+  it("unverifiable preflight excerpt becomes uncertain but full evaluation remains specification-compliant", async () => {
+    resolveReadiness.mockResolvedValue({
+      status: "fresh",
+      category: categoryWithSpecification(),
+      effectiveCriteria: [{ id: "c1", label: "Kriter 1", maxScore: 10 }],
+    });
+    evaluateRelevancePreflight.mockResolvedValue({
+      status: "unrelated",
+      specificationRuleIds: ["spec-rule-1"],
+      reportPageNumber: 1,
+      reportExcerpt: "Raporda bulunmayan uydurma alıntı.",
+      explanation: "Rapor farklı bir problemi çözüyor.",
+      confidence: 0.99,
+      mappedConcepts: [],
+    });
+
+    const res = await POST(makeRequest(), { params: Promise.resolve({ id: "report-1" }) });
+    const body = await res.json();
+
+    expect(evaluateReport).toHaveBeenCalledTimes(1);
+    expect(body.evaluation.relevanceAnalysis.status).toBe("uncertain");
+    expect(body.evaluation.relevanceAnalysis).not.toHaveProperty("reportPageNumber");
+    expect(body.evaluation.relevanceAnalysis).not.toHaveProperty("reportExcerpt");
+    expect(body.evaluation.specificationAnalysis).toMatchObject({ compliant: true, findings: [] });
+  });
 
   it("validated relevant preflight continues to the detailed scoring AI call", async () => {
     resolveReadiness.mockResolvedValue({
@@ -401,6 +468,130 @@ describe("POST /api/reports/[id]/evaluate — relevance preflight", () => {
     expect(res.status).toBe(200);
     expect(evaluateRelevancePreflight).toHaveBeenCalledTimes(1);
     expect(evaluateReport).toHaveBeenCalledTimes(1);
+  });
+
+  it("removes a fake specification finding and derives compliant=true", async () => {
+    resolveReadiness.mockResolvedValue({
+      status: "fresh",
+      category: categoryWithSpecification(),
+      effectiveCriteria: [{ id: "c1", label: "Kriter 1", maxScore: 10 }],
+    });
+    evaluateReport.mockResolvedValue({
+      ...fakeSpecViolationOutput(),
+      specificationAnalysis: {
+        compliant: false,
+        findings: [
+          {
+            ruleId: "invented-rule-id",
+            ruleText: "Uydurma kural.",
+            findingText: "Rapor içeriği ihlal sayıldı.",
+            severity: "high",
+            pageNumber: 1,
+            exactExcerpt: "Rapor içeriği.",
+          },
+        ],
+        notes: "AI ihlal bildirdi.",
+      },
+    });
+
+    const res = await POST(makeRequest(), { params: Promise.resolve({ id: "report-1" }) });
+    const body = await res.json();
+
+    expect(body.evaluation.specificationAnalysis).toMatchObject({ compliant: true, findings: [] });
+  });
+});
+
+describe("POST /api/reports/[id]/evaluate — effective criteria pipeline", () => {
+  it("sends category-specific judge criteria to AI and preserves their ids/max scores", async () => {
+    const effectiveCriteria = [
+      { id: "category-innovation", label: "Kategori Yenilik", description: "Özgünlük", maxScore: 12 },
+      { id: "category-impact", label: "Kategori Etki", description: "Etki", maxScore: 8 },
+    ];
+    resolveReadiness.mockResolvedValue({
+      status: "fresh",
+      category: {
+        id: "cat-1",
+        name: "Test Kategorisi",
+        criteria: effectiveCriteria,
+        specificationText: undefined,
+        templateSections: [{ id: "sec-1", title: "Giriş", expectedContent: "Amaç." }],
+      },
+      effectiveCriteria,
+    });
+    evaluateReport.mockResolvedValue({
+      ...fakeSpecViolationOutput(),
+      criteriaEvaluations: [
+        {
+          criterionId: "category-innovation",
+          score: 12,
+          reason: "Tam.",
+          pageNumber: 1,
+          exactExcerpt: "Rapor içeriği.",
+        },
+        {
+          criterionId: "category-impact",
+          score: 8,
+          reason: "Tam.",
+          pageNumber: 1,
+          exactExcerpt: "Rapor içeriği.",
+        },
+      ],
+    });
+
+    const res = await POST(makeRequest(), { params: Promise.resolve({ id: "report-1" }) });
+    const body = await res.json();
+
+    expect(evaluateReport.mock.calls[0][0].evaluationCriteria).toEqual([
+      { id: "category-innovation", name: "Kategori Yenilik", description: "Özgünlük", maxScore: 12 },
+      { id: "category-impact", name: "Kategori Etki", description: "Etki", maxScore: 8 },
+    ]);
+    expect(body.evaluation.criteriaEvaluations).toEqual([
+      expect.objectContaining({ criterionId: "category-innovation", score: 12, criterionLabel: "Kategori Yenilik", criterionMaxScore: 12 }),
+      expect.objectContaining({ criterionId: "category-impact", score: 8, criterionLabel: "Kategori Etki", criterionMaxScore: 8 }),
+    ]);
+  });
+
+  it("sends global fallback criteria to AI when readiness resolves no category-specific criteria", async () => {
+    const globalCriteria = [
+      { id: "global-method", label: "Global Yöntem", description: "Yöntem", maxScore: 20 },
+    ];
+    scoreCriteriaListAll.mockResolvedValue(globalCriteria);
+    resolveReadiness.mockResolvedValue({
+      status: "fresh",
+      category: {
+        id: "cat-1",
+        name: "Test Kategorisi",
+        criteria: [],
+        specificationText: undefined,
+        templateSections: [{ id: "sec-1", title: "Giriş", expectedContent: "Amaç." }],
+      },
+      effectiveCriteria: globalCriteria,
+    });
+    evaluateReport.mockResolvedValue({
+      ...fakeSpecViolationOutput(),
+      criteriaEvaluations: [
+        {
+          criterionId: "global-method",
+          score: 20,
+          reason: "Tam.",
+          pageNumber: 1,
+          exactExcerpt: "Rapor içeriği.",
+        },
+      ],
+    });
+
+    const res = await POST(makeRequest(), { params: Promise.resolve({ id: "report-1" }) });
+    const body = await res.json();
+
+    expect(evaluateReport.mock.calls[0][0].evaluationCriteria).toEqual([
+      { id: "global-method", name: "Global Yöntem", description: "Yöntem", maxScore: 20 },
+    ]);
+    expect(body.evaluation.criteriaEvaluations[0]).toMatchObject({
+      criterionId: "global-method",
+      score: 20,
+      criterionLabel: "Global Yöntem",
+      criterionMaxScore: 20,
+    });
   });
 });
 

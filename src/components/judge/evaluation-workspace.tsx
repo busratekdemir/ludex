@@ -400,7 +400,7 @@ export function EvaluationWorkspace({ reportId }: { reportId: string }) {
    */
   const aiPreliminaryScore = useMemo(
     () =>
-      analysis && analysis.relevanceAnalysis?.status === "relevant"
+      analysis && analysis.relevanceAnalysis?.status !== "unrelated"
         ? computeAiPreliminaryScore(
             analysis.criteriaEvaluations.map((c) => ({ score: c.score, maxScore: c.maxScore })),
           )
@@ -1024,7 +1024,7 @@ export function EvaluationWorkspace({ reportId }: { reportId: string }) {
                       <p>
                         {relevanceBlocked
                           ? "Raporun temel konusu, aktif yarışma problemiyle anlamlı biçimde eşleşmiyor. Normal puanlama durduruldu."
-                          : "Normal AI puanlaması durduruldu. Hakem incelemesi gerekiyor."}
+                          : "AI kriter değerlendirmesi tamamlandı; kategori/problem eşleşmesi için ayrıca hakem incelemesi gerekiyor."}
                       </p>
                       <p>{analysis.relevanceAnalysis?.explanation}</p>
                       {analysis.relevanceAnalysis?.reportExcerpt && (
@@ -1253,7 +1253,7 @@ export function EvaluationWorkspace({ reportId }: { reportId: string }) {
                               Aşama 7 – Kriter Bazlı AI Değerlendirmesi
                             </AccordionTrigger>
                             <AccordionContent className="space-y-2">
-                              {analysis.relevanceAnalysis?.status !== "relevant" ? (
+                              {analysis.relevanceAnalysis?.status === "unrelated" ? (
                                 <p className="rounded-lg bg-muted/40 p-3 text-base text-muted-foreground">
                                   Puanlama yapılmadı; kategori/problem eşleşmesi için hakem incelemesi gerekiyor.
                                 </p>
