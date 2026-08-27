@@ -148,7 +148,9 @@ export function toAIAnalysisResult(
       label: c.criterionLabel ?? c.criterionId,
       score: c.score,
       scoreUnavailableReason:
-        c.score != null ? undefined : c.scoreUnavailableReason ?? (c.criterionMaxScore ? "evidence_unverified" : "scale_missing"),
+        c.score != null
+          ? undefined
+          : c.scoreUnavailableReason ?? (c.criterionMaxScore == null ? "scale_missing" : undefined),
       maxScore: c.criterionMaxScore,
       reason: c.reason,
       evidenceIds: hasEvidence ? [id] : [],

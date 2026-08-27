@@ -49,6 +49,25 @@ describe("computeAiPreliminaryScore", () => {
     expect(result).toEqual({ score: 81, maxScore: 100, incomplete: false, missingCount: 0 });
   });
 
+  it("includes preserved scores whose optional page evidence is unavailable (12/15 + 21/25 + 18/25 + 16/20 + 13/15 = 80/100)", () => {
+    const criteriaWithoutPageEvidence = [
+      { score: 12, criterionMaxScore: 15 },
+      { score: 21, criterionMaxScore: 25 },
+      { score: 18, criterionMaxScore: 25 },
+      { score: 16, criterionMaxScore: 20 },
+      { score: 13, criterionMaxScore: 15 },
+    ];
+
+    const result = computeAiPreliminaryScore(
+      criteriaWithoutPageEvidence.map((criterion) => ({
+        score: criterion.score,
+        maxScore: criterion.criterionMaxScore,
+      }))
+    );
+
+    expect(result).toEqual({ score: 80, maxScore: 100, incomplete: false, missingCount: 0 });
+  });
+
   it("marks the total as incomplete instead of silently treating a null score as 0", () => {
     const result = computeAiPreliminaryScore([
       { score: 17, maxScore: 20 },
